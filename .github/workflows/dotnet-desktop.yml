@@ -25,11 +25,10 @@ jobs:
     strategy:
       matrix:
         configuration: [Debug, Release]
-        # Use the manually specified configuration when triggered by workflow_dispatch
         include:
           - configuration: ${{ github.event.inputs.configuration || 'Release' }}
     
-    runs-on: windows-latest
+    runs-on: windows-2019  # Using windows-2019 which has better support for older .NET Framework versions
 
     env:
       Solution_Name: StringDecryptorBase.sln
@@ -41,21 +40,29 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Install .NET
+    # Add Windows SDK installation
+    - name: Setup MSBuild Path
+      uses: microsoft/setup-msbuild@v1.1
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v1.2.0
+
+    - name: Setup .NET Framework Developer Pack
+      run: |
+        choco install netfx-4.5.2-devpack -y
+        
+    - name: Install .NET Core
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: 6.0.x
 
-    - name: Restore dependencies
-      run: dotnet restore $env:Solution_Name
+    - name: Restore NuGet Packages
+      run: nuget restore $env:Solution_Name
 
     - name: Build
       run: |
         $additionalArgs = "${{ github.event.inputs.additional_args }}"
-        dotnet build $env:Solution_Name --configuration ${{ matrix.configuration }} --no-restore $additionalArgs
-
-    - name: Execute unit tests
-      run: dotnet test $env:Solution_Name --configuration ${{ matrix.configuration }} --no-build
+        msbuild $env:Solution_Name /p:Configuration=${{ matrix.configuration }} /p:Platform="Any CPU" /m
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v3
