@@ -1,6 +1,20 @@
 name: .NET Desktop Build
 
 on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: 'Build Configuration'
+        required: true
+        default: 'Release'
+        type: choice
+        options:
+        - Release
+        - Debug
+      additional_args:
+        description: 'Additional build arguments (optional)'
+        required: false
+        type: string
   push:
     branches: [ "main" ]
   pull_request:
@@ -11,7 +25,10 @@ jobs:
     strategy:
       matrix:
         configuration: [Debug, Release]
-        
+        # Use the manually specified configuration when triggered by workflow_dispatch
+        include:
+          - configuration: ${{ github.event.inputs.configuration || 'Release' }}
+    
     runs-on: windows-latest
 
     env:
@@ -33,7 +50,9 @@ jobs:
       run: dotnet restore $env:Solution_Name
 
     - name: Build
-      run: dotnet build $env:Solution_Name --configuration ${{ matrix.configuration }} --no-restore
+      run: |
+        $additionalArgs = "${{ github.event.inputs.additional_args }}"
+        dotnet build $env:Solution_Name --configuration ${{ matrix.configuration }} --no-restore $additionalArgs
 
     - name: Execute unit tests
       run: dotnet test $env:Solution_Name --configuration ${{ matrix.configuration }} --no-build
