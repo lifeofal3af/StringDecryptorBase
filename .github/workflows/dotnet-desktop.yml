@@ -22,17 +22,10 @@ on:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        configuration: [Debug, Release]
-        include:
-          - configuration: ${{ github.event.inputs.configuration || 'Release' }}
-    
-    runs-on: windows-2019  # Using windows-2019 which has better support for older .NET Framework versions
+    runs-on: windows-2019
 
     env:
       Solution_Name: StringDecryptorBase.sln
-      Test_Project_Path: StringDecryptorBase.Tests\StringDecryptorBase.Tests.csproj
 
     steps:
     - name: Checkout
@@ -40,7 +33,6 @@ jobs:
       with:
         fetch-depth: 0
 
-    # Add Windows SDK installation
     - name: Setup MSBuild Path
       uses: microsoft/setup-msbuild@v1.1
 
@@ -50,22 +42,38 @@ jobs:
     - name: Setup .NET Framework Developer Pack
       run: |
         choco install netfx-4.5.2-devpack -y
-        
-    - name: Install .NET Core
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: 6.0.x
+
+    # Add steps to explicitly install dnlib via NuGet
+    - name: Create NuGet.Config
+      run: |
+        @"
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <packageSources>
+            <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+          </packageSources>
+        </configuration>
+        "@ | Out-File NuGet.Config
+
+    - name: Install dnlib Package
+      run: |
+        nuget install dnlib -Version 3.3.5 -OutputDirectory packages
+
+    - name: Update Project References
+      run: |
+        $proj = Get-Content .\StringDecryptorBase\StringDecryptorBase.csproj
+        $proj = $proj -replace '<Reference Include="dnlib" />', '<Reference Include="dnlib"><HintPath>..\packages\dnlib.3.3.5\lib\net45\dnlib.dll</HintPath></Reference>'
+        $proj | Set-Content .\StringDecryptorBase\StringDecryptorBase.csproj
 
     - name: Restore NuGet Packages
       run: nuget restore $env:Solution_Name
 
-    - name: Build
+    - name: Build Solution
       run: |
-        $additionalArgs = "${{ github.event.inputs.additional_args }}"
-        msbuild $env:Solution_Name /p:Configuration=${{ matrix.configuration }} /p:Platform="Any CPU" /m
+        msbuild $env:Solution_Name /p:Configuration=${{ github.event.inputs.configuration || 'Release' }} /p:Platform="Any CPU" /m /p:RestorePackages=true
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: StringDecryptorBase-${{ matrix.configuration }}
-        path: StringDecryptorBase\bin\${{ matrix.configuration }}
+        name: StringDecryptorBase-${{ github.event.inputs.configuration || 'Release' }}
+        path: StringDecryptorBase\bin\${{ github.event.inputs.configuration || 'Release' }}
